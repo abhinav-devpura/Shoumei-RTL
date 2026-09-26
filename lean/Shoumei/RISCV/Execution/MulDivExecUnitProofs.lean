@@ -14,9 +14,9 @@ open Shoumei.RISCV.Execution
 theorem muldiv_name :
     mulDivExecUnit.name = "MulDivExecUnit" := by native_decide
 
-/-- The unit has 143 input signals. -/
+/-- The unit has 144 input signals. -/
 theorem muldiv_input_count :
-    mulDivExecUnit.inputs.length = 143 := by native_decide
+    mulDivExecUnit.inputs.length = 144 := by native_decide
 
 /-- The unit has 72 output signals. -/
 theorem muldiv_output_count :

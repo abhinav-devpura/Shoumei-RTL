@@ -6,6 +6,8 @@ import Shoumei.Circuits.Sequential.FPMultiplier
 
 namespace Shoumei.Circuits.Sequential
 
+set_option maxRecDepth 131072
+
 theorem fpMultiplier_name : fpMultiplierCircuit.name = "FPMultiplier" := by rfl
 
 theorem fpMultiplier_inputs : fpMultiplierCircuit.inputs.length = 77 := by native_decide

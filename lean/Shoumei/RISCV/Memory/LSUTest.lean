@@ -29,10 +29,11 @@ def createLSUWithStores (n : Nat) : LSUState :=
     match count with
     | 0 => lsu
     | k + 1 =>
-        let addr := (0x1000 + k * 4).toUInt32
-        let data := (0x100 + k).toUInt32
+        let addr : UInt64 := (0x1000 + k * 4).toUInt64
+        let data : UInt64 := (0x100 + k).toUInt64
         let (newLSU, success) := lsu.executeStore OpType.SW addr 0 data
         if success then enqueueN newLSU k else lsu
+  termination_by count
   enqueueN LSUState.empty n
 
 /-! ## Test Category 1: Store Execution -/
@@ -295,8 +296,8 @@ theorem test_load_byte_sign_extend :
     let lsu2 := lsu1.commitStore 0
     -- Load byte signed (LB)
     let (_, result) := lsu2.executeLoad OpType.LB 0x1000 0 10
-    -- After sign extension: 0x80 -> 0xFFFFFF80
-    result.isSome ∧ result.get!.2 = 0xFFFFFF80 := by
+    -- After 64-bit sign extension: 0x80 -> 0xFFFFFFFFFFFFFF80
+    result.isSome ∧ result.get!.2 = 0xFFFFFFFFFFFFFF80 := by
   native_decide
 
 /-- Test: Load byte unsigned (no sign extension). -/

@@ -140,7 +140,7 @@ theorem fpRs2w1_64_instance_count : fpRs2W1_64.instances.length = 3 := by native
 
 def intRs4w2_64_dependencies : List String := ["Register157", "PriorityArbiter2"]
 def rs2w1_64_dependencies : List String := ["Register157", "PriorityArbiter2"]
-def memRs2w1_64_dependencies : List String := ["Register1", "Register157", "PriorityArbiter2"]
+def memRs2w1_64_dependencies : List String := ["Register1", "Register158", "PriorityArbiter2"]
 def fpRs2w1_64_dependencies : List String := ["Register157", "PriorityArbiter2"]
 
 theorem intRs4w2_64_uses_verified_blocks :

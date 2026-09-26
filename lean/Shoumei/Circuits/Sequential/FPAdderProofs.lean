@@ -6,6 +6,8 @@ import Shoumei.Circuits.Sequential.FPAdder
 
 namespace Shoumei.Circuits.Sequential
 
+set_option maxRecDepth 16384
+
 theorem fpAdder_name : fpAdderCircuit.name = "FPAdder" := by rfl
 theorem fpAdder_inputs : fpAdderCircuit.inputs.length = 78 := by native_decide
 theorem fpAdder_outputs : fpAdderCircuit.outputs.length = 44 := by native_decide

@@ -207,7 +207,8 @@ jobs:
           # No restore-keys fallback: stale oleans cause codegen bugs
 
       - name: Build
-        run: lake build
+        run: lake build Shoumei.All
+
 
       # `lake build` used to reach only what the library root and the
       # executables import, so a module nothing imported was never compiled and

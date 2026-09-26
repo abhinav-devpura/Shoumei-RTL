@@ -6,6 +6,8 @@ import Shoumei.Circuits.Combinational.FPMisc
 
 namespace Shoumei.Circuits.Combinational
 
+set_option maxRecDepth 131072
+
 theorem fpMisc_name : fpMiscCircuit.name = "FPMisc" := by rfl
 theorem fpMisc_inputs : fpMiscCircuit.inputs.length = 74 := by native_decide
 theorem fpMisc_outputs : fpMiscCircuit.outputs.length = 37 := by native_decide

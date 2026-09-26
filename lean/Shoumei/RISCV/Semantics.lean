@@ -514,6 +514,24 @@ def executeInstruction (state : ArchState) (decoded : DecodedInstruction) : Exec
   -- Zicsr: not yet implemented in behavioral semantics
   | .CSRRW | .CSRRS | .CSRRC | .CSRRWI | .CSRRSI | .CSRRCI =>
     .illegalInstruction  -- TODO: implement CSR semantics
+  -- 64-bit base integer and M-extension word ops (RV64I/M): not yet implemented in 32-bit behavioral semantics
+  | .ADDIW | .ADDW | .LD | .LWU | .SD | .SLLIW | .SLLW | .SRAIW | .SRAW | .SRLIW | .SRLW | .SUBW
+  | .DIVUW | .DIVW | .MULW | .REMUW | .REMW =>
+    .illegalInstruction  -- TODO: RV64I/M semantics
+
+  -- 64-bit atomic operations (RV64A): not yet implemented in 32-bit behavioral semantics
+  | .AMOADD_D | .AMOAND_D | .AMOMAXU_D | .AMOMAX_D | .AMOMINU_D | .AMOMIN_D | .AMOOR_D
+  | .AMOSWAP_D | .AMOXOR_D | .LR_D | .SC_D =>
+    .illegalInstruction  -- TODO: RV64A semantics
+
+  -- 64-bit float conversions and D-extension (RV64F/D): not yet implemented in 32-bit behavioral semantics
+  | .FCVT_LU_S | .FCVT_L_S | .FCVT_S_L | .FCVT_S_LU
+  | .FADD_D | .FCLASS_D | .FCVT_D_L | .FCVT_D_LU | .FCVT_D_S | .FCVT_D_W | .FCVT_D_WU
+  | .FCVT_LU_D | .FCVT_L_D | .FCVT_S_D | .FCVT_WU_D | .FCVT_W_D | .FDIV_D | .FEQ_D
+  | .FLD | .FLE_D | .FLT_D | .FMADD_D | .FMAX_D | .FMIN_D | .FMSUB_D | .FMUL_D
+  | .FMV_D_X | .FMV_X_D | .FNMADD_D | .FNMSUB_D | .FSD | .FSGNJN_D | .FSGNJX_D | .FSGNJ_D
+  | .FSQRT_D | .FSUB_D =>
+    .illegalInstruction  -- TODO: RV64D semantics
 
 /-- Execute a full instruction fetch-decode-execute cycle -/
 def executeStep (state : ArchState) (instrDefs : List InstructionDef) : ExecResult :=

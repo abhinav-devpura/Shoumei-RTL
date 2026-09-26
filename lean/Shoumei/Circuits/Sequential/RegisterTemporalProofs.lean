@@ -226,20 +226,19 @@ theorem register_slice_composition
     The evaluation of bit-slice i depends strictly on input wire d_i, clock, and reset.
     Any variation or taint on bit-slice j (j ≠ i) has zero impact on output q_i. -/
 theorem register_slice_non_interference
-    (d_i d_j clk rst q_i : Wire)
+    (d_i _d_j _clk rst q_i : Wire)
     (env1 env2 : Env)
     (h_di : env1 d_i = env2 d_i)
     (h_rst : env1 rst = env2 rst)
-    (h_clk : env1 clk = env2 clk) :
-    evalDFF (Gate.mkDFF d_i clk rst q_i) env1 =
-    evalDFF (Gate.mkDFF d_i clk rst q_i) env2 := by
-  simp [evalDFF, Gate.mkDFF, h_di, h_rst, h_clk]
-
+    (_h_clk : env1 _clk = env2 _clk) :
+    evalDFF (Gate.mkDFF d_i _clk rst q_i) env1 =
+    evalDFF (Gate.mkDFF d_i _clk rst q_i) env2 := by
+  simp [evalDFF, Gate.mkDFF, h_di, h_rst]
 /-- **Theorem (Bit-Slice Trace Non-Interference):**
     Across arbitrary execution traces, the latching behavior of slice i depends
     strictly on d_i at cycle t and is mathematically invariant to all other lanes. -/
 theorem register_slice_trace_non_interference
-    (d_i d_j q_i : Wire) (reset : Wire)
+    (d_i _d_j q_i : Wire) (reset : Wire)
     (tr1 tr2 : Trace)
     (h_spec1 : satisfiesTrace tr1 (.RegisterDataCapture reset [d_i] [q_i]))
     (h_spec2 : satisfiesTrace tr2 (.RegisterDataCapture reset [d_i] [q_i]))
@@ -250,9 +249,8 @@ theorem register_slice_trace_non_interference
     tr1.wireAt q_i (t + 1) = tr2.wireAt q_i (t + 1) := by
   have h1 := h_spec1 t h_rst1
   have h2 := h_spec2 t h_rst2
-  simp [Trace.busAt] at h1 h2
-  rw [h1, h2, h_di]
-
+  simp only [Trace.busAt, List.map, List.cons.injEq, and_true] at h1 h2
+  exact h1.trans (h_di.trans h2.symm)
 /-- **Theorem (Bit-Slice Reset Isolation):**
     Under reset, the cleared output of slice i is identical across all traces. -/
 theorem register_slice_trace_reset_isolation
@@ -266,9 +264,8 @@ theorem register_slice_trace_reset_isolation
     tr1.wireAt q_i (t + 1) = tr2.wireAt q_i (t + 1) := by
   have h1 := h_spec1 t h_rst1
   have h2 := h_spec2 t h_rst2
-  simp [Trace.busAt] at h1 h2
-  rw [h1, h2]
-
+  simp only [Trace.busAt, List.map, List.cons.injEq, and_true] at h1 h2
+  exact h1.trans h2.symm
 /-! ## Part 6: Multi-Cycle Pipeline Latency (Z⁻ᵏ Delay Functors) -/
 
 /-- **Theorem (2-Stage Pipeline Delay / Z⁻² Functor):**
@@ -311,7 +308,7 @@ theorem register_pipeline_3stage_delay
     In a 2-stage register pipeline, asserting reset at cycle t clears stage 1 at t+1,
     which propagates zero into stage 2 at cycle t+2. -/
 theorem register_pipeline_reset_propagation
-    {dWires midWires qWires : List Wire} {reset : Wire}
+    {_dWires midWires qWires : List Wire} {reset : Wire}
     {tr : Trace}
     (h_rst1 : satisfiesTrace tr (.RegisterResetZero reset midWires))
     (h_stg2 : satisfiesTrace tr (.RegisterDataCapture reset midWires qWires))
