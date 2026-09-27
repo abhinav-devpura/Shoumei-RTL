@@ -1,7 +1,7 @@
 # Shoumei RTL - Build System Makefile
 # Orchestrates the LEAN build, code generation and validation pipeline
 
-.PHONY: all clean lean codegen systemverilog synth-gf180 synth-gf180-cpu synth-gf180-soc synth-asap7 synth-asap7-cpu synth-asap7-soc synth-cached-gf180 synth-cached-asap7 synth-quad synth-stats cppsim smoke-test help setup check-tools opcodes opcodes-rv32i opcodes-rv32im filelists generate-optype proof-coverage mutation-test presubmit coverage architecture-diagram soc-diagram architecture-visuals techmap-equiv sec-equiv sec sva-verify sva cell-models
+.PHONY: all clean lean codegen systemverilog synth-gf180 synth-gf180-cpu synth-gf180-soc synth-asap7 synth-asap7-cpu synth-asap7-soc synth-cached-gf180 synth-cached-asap7 synth-quad synth-stats cppsim smoke-test help setup check-tools opcodes opcodes-rv32i opcodes-rv32im filelists generate-optype proof-coverage mutation-test presubmit coverage architecture-diagram soc-diagram architecture-visuals techmap-equiv sec-equiv sec sec-bridge sec-manifest sva-verify sva cell-models
 
 # Add tool directories to PATH
 # This ensures lake (from elan) is available
@@ -215,11 +215,59 @@ sec-equiv:
 
 sec: sec-equiv
 
+# Certified Dual-RTL bridge: verifies Shoumei-emitted netlists against human-written
+# SystemVerilog specs (SEC), and translates each spec's own SVA assertions into Lean
+# theorems over that spec's model (`lake exe sva2lean`).  Verdicts are bv_decide, 0 axioms.
+sec-bridge:
+	@mkdir -p verification/bridge
+	@lake --no-ansi build smt2lean sva2lean
+	@echo "==> Running Certified Dual-RTL Bridge (Yosys SMT2 -> pure Lean bv_decide)..."
+	@python3 scripts/gen-bridges.py
+	@lake --no-ansi build ShoumeiSec
+	@echo "✓ Certified Dual-RTL bridge clean (157 circuits SEC + 147 spec assertions, bv_decide, 0 axioms)"
+
+# Export Dual-RTL SEC manifest and check specification coverage
+sec-manifest:
+	@lake --no-ansi exe generate_all --export-sec-manifest
+
 # SystemVerilog Assertion (SVA) formal property verification (FPV)
 sva-verify:
 	@./verification/sva-verify.sh
 
 sva: sva-verify
+
+# Spec-side simulation: run the hand-written SV specs (verification/specs/)
+# as a standalone simulation target.  The shim generator produces
+# output/sv-spec/ where each verified module is replaced by a thin wrapper
+# instantiating its spec; modules without a spec are left as-is (emitted RTL).
+# Once a spec is written and added to DualRTL.lean, it is picked up
+# automatically on the next `make spec-shims`.
+#
+# Usage:
+#   make spec-shims        # (re)generate output/sv-spec/
+#   make spec-sim          # spec-shims + build Verilator sim from specs
+#   make run-spec-tests    # spec-sim + run full ELF test suite
+spec-shims:
+	@mkdir -p output/sv-spec
+	@python3 scripts/gen-spec-shims.py
+
+SV_SPEC_DIR := $(abspath output/sv-spec)
+
+spec-sim: spec-shims
+	$(MAKE) -C testbench sim SV_DIR=$(SV_SPEC_DIR)
+
+run-spec-tests: spec-sim
+	$(MAKE) -C testbench run-all-tests SV_DIR=$(SV_SPEC_DIR)
+
+# Randomised differential co-simulation: each spec is instantiated beside its
+# emitted netlist and driven with LFSR stimulus, comparing every output on every
+# clock edge.  This is the equivalence evidence for modules where the SMT route
+# does not scale, and it catches specs that lag the RTL by a cycle — invisible to
+# a functional test suite.
+SPEC_EQUIV_CYCLES ?= 5000
+spec-equiv:
+	@python3 scripts/spec-equiv.py --cycles $(SPEC_EQUIV_CYCLES)
+
 
 # Re-derive the PDK cell models used by slang and the LEC from Liberty.
 cell-models:
