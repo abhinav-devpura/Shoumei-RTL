@@ -1,0 +1,74 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("@rules_foreign_cc//foreign_cc:defs.bzl", "configure_make")
+
+package(default_visibility = ["//visibility:public"])
+
+# A job that does not check out the submodule loads this package without it.
+filegroup(
+    name = "spike_srcs",
+    srcs = glob(
+        ["riscv-isa-sim/**"],
+        allow_empty = True,
+    ),
+)
+
+filegroup(
+    name = "riscv_opcodes_srcs",
+    srcs = glob(
+        ["riscv-opcodes/**"],
+        allow_empty = True,
+    ),
+)
+
+alias(
+    name = "orfs_liberty",
+    actual = "@orfs_pdk//:liberty",
+)
+
+configure_make(
+    name = "spike_lib",
+    configure_options = [
+        "CFLAGS=-O2",
+        "CXXFLAGS=-O2",
+        # configure stops when dtc is not on PATH.  Spike runs dtc only to
+        # build a device tree for sim_t.  The cosim harness drives processor_t
+        # directly (testbench/lib/spike_oracle.cpp), so dtc never runs.
+        # AC_PATH_PROG keeps a preset DTC only when it is an absolute path.
+        # A preset cache variable skips the PATH search.
+        "ac_cv_path_DTC=dtc",
+    ],
+    lib_source = ":spike_srcs",
+    out_shared_libs = [
+        "libriscv.so",
+        "libcustomext.so",
+        "libsoftfloat.so",
+    ],
+    out_static_libs = [
+        "libfesvr.a",
+        "libdisasm.a",
+    ],
+    # Without a resource size the build tool runs `make` with one job.
+    resource_size = "large",
+)
+
+cc_library(
+    name = "libfst",
+    srcs = [
+        "libfst/src/fastlz.c",
+        "libfst/src/fstapi.c",
+        "libfst/src/lz4.c",
+    ],
+    hdrs = [
+        "libfst/src/fastlz.h",
+        "libfst/src/fst_win_unistd.h",
+        "libfst/src/fstapi.h",
+        "libfst/src/lz4.h",
+    ],
+    copts = ["-O2"],
+    includes = ["libfst/src"],
+    linkopts = [
+        "-lz",
+        "-lpthread",
+    ],
+    local_defines = ['FST_CONFIG_INCLUDE=\\"fstapi.h\\"'],
+)

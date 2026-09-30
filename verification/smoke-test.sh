@@ -1,6 +1,6 @@
 #!/bin/bash
 # Smoke test: Validates pipeline outputs are structurally correct
-# Assumes builds have already run (via 'make smoke-test' or CI steps)
+# //verification:smoke_test runs this script on the Bazel outputs.
 # Exit code 0 = all passed, non-zero = failure count
 
 set -e
@@ -11,7 +11,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="${SMOKE_ROOT:-$(dirname "$SCRIPT_DIR")}"
 
 cd "$PROJECT_ROOT"
 
@@ -28,7 +28,7 @@ echo ""
 
 # Pre-flight: verify codegen has been run
 if ! ls output/sv-from-lean/*.sv >/dev/null 2>&1; then
-    printf '%bNo generated SV files found. Run make codegen first.%b\n' "$RED" "$NC"
+    printf '%bNo generated SV files found. Run bazel build //:rtl first.%b\n' "$RED" "$NC"
     exit 1
 fi
 
@@ -54,7 +54,7 @@ echo "==> Test 2: C++ Simulation Output"
 
 SC_H_COUNT=0
 if [ -d "output/cpp_sim" ]; then
-    SC_H_COUNT=$(find output/cpp_sim -name "*.h" 2>/dev/null | wc -l)
+    SC_H_COUNT=$(find -L output/cpp_sim -name "*.h" 2>/dev/null | wc -l)
 fi
 
 if [ "$SC_H_COUNT" -gt 0 ]; then
@@ -67,7 +67,7 @@ if [ "$SC_H_COUNT" -gt 0 ]; then
         fi
     done
 else
-    printf '%b  ⚠ No C++ simulation output (run make codegen to generate)%b\n' "$YELLOW" "$NC"
+    printf '%b  ⚠ No C++ simulation output (run bazel build //:rtl to generate)%b\n' "$YELLOW" "$NC"
 fi
 echo ""
 
@@ -177,14 +177,11 @@ else
 fi
 
 # Cache behavior conformance (emitted SV vs reference model).
-# Needs Verilator, which the general smoke job does not install (the
-# verilator-sim CI job runs the conformance suite instead); skip cleanly
-# when the model can't be built.
 echo ""
 echo "==> Cache behavior conformance"
-if ! command -v verilator > /dev/null 2>&1; then
-    echo "(skipped: verilator not installed; CI runs it in verilator-sim)"
-elif make -C testbench cache-model-test > /tmp/cache-conformance.log 2>&1; then
+if [ -n "${SKIP_CACHE_CONFORMANCE:-}" ]; then
+    echo "(skipped: verified via testbench:cache_conformance_test)"
+elif bazel test //testbench:cache_conformance_test > /tmp/cache-conformance.log 2>&1; then
     pass "Cache conformance (L1D SV vs reference)"
 else
     fail "Cache conformance (see /tmp/cache-conformance.log)"
@@ -196,7 +193,7 @@ echo ""
 echo "==> PDK technology mapping"
 
 for pdk_dir in output/sv-asap7 output/sv-gf180; do
-    mapped_count=$(find "$pdk_dir" -maxdepth 1 -name '*.sv' 2>/dev/null | wc -l | tr -d ' ')
+    mapped_count=$(find -L "$pdk_dir" -maxdepth 1 -name '*.sv' 2>/dev/null | wc -l | tr -d ' ')
     if [ "$mapped_count" -gt 0 ]; then
         pass "Tech-mapped SV present: $pdk_dir ($mapped_count modules)"
     else
@@ -245,7 +242,14 @@ else
     cat /tmp/soc-visual.log || true
 fi
 
-SORRY_COUNT=$(grep -rnE '\bsorry\b' lean/ 2>/dev/null | grep -vcE ':[0-9]+:\s*--' || true)
+if python3 verification/test-ste-lint.py > /tmp/ste-lint-test.log 2>&1; then
+    pass "ASD-STE100 prose linter rules"
+else
+    fail "ASD-STE100 prose linter rules failed (see /tmp/ste-lint-test.log)"
+    cat /tmp/ste-lint-test.log || true
+fi
+
+SORRY_COUNT=$(grep -rnE --include="*.lean" '\bsorry\b' lean/ 2>/dev/null | grep -vcE ':[0-9]+:\s*--' || true)
 if [ "$SORRY_COUNT" -eq 0 ]; then
     pass "Zero sorry/admit occurrences in Lean proofs"
 else
@@ -272,27 +276,14 @@ for sec_artifact in output/sv-sec/Register160_sec_miter.sv \
     fi
 done
 
-if command -v yosys >/dev/null 2>&1; then
-    if ./verification/sec-verify.sh --yosys > /tmp/sec-smoke.log 2>&1; then
-        pass "Sequential Equivalence Checking (Yosys SAT miter)"
-    else
-        fail "Sequential Equivalence Checking failed (see /tmp/sec-smoke.log)"
-        tail -20 /tmp/sec-smoke.log || true
-    fi
+if ./verification/sec-verify.sh --yosys > /tmp/sec-smoke.log 2>&1; then
+    pass "Sequential Equivalence Checking (Yosys SAT miter)"
 else
-    echo "(skipped: yosys not installed)"
+    fail "Sequential Equivalence Checking failed (see /tmp/sec-smoke.log)"
+    tail -20 /tmp/sec-smoke.log || true
 fi
 
-if command -v slang >/dev/null 2>&1 || python3 -c "import pyslang" >/dev/null 2>&1; then
-    if python3 verification/slang-lint.py output/sv-sec > /tmp/sva-slang.log 2>&1; then
-        pass "SVA miter elaboration (slang)"
-    else
-        fail "SVA miter elaboration failed (see /tmp/sva-slang.log)"
-        tail -20 /tmp/sva-slang.log || true
-    fi
-else
-    echo "(skipped: slang/pyslang not installed)"
-fi
+# The slang elaboration of the SEC miter runs in //verification:slang_sec_lint_test.
 echo ""
 
 # --- Summary ---

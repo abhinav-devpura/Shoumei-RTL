@@ -1,0 +1,21 @@
+"""Rule and macro definitions shared across the workspace."""
+
+load(":lean_tool.bzl", "lean_tool")
+
+package(default_visibility = ["//visibility:public"])
+
+# The Lean compiler the toolchain provides, for a test that compiles Lean.
+lean_tool(name = "lean")
+
+toolchain_type(name = "riscv_toolchain_type")
+
+exports_files([
+    "lean_tool.bzl",
+    "node_tools.bzl",
+    "riscv_gcc.bzl",
+    "pdk.bzl",
+    "riscv.bzl",
+    "rtl.bzl",
+    "spec_rtl.bzl",
+    "verilog_tree.bzl",
+])

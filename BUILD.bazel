@@ -1,0 +1,127 @@
+load("@buildifier_prebuilt//:rules.bzl", "buildifier", "buildifier_test")
+load("//rules:rtl.bzl", "shoumei_rtl")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "lean-lint-baseline.txt",
+    "ruff.toml",
+    "scripts/bench_compare.py",
+    "scripts/bench_regression.py",
+    "scripts/fst_inspect.cpp",
+    "scripts/gen-spec-shims.py",
+])
+
+# The RTL generation suite.  The generators live in //generators; this target
+# wires one generator call to every output tree the rest of the build reads.
+shoumei_rtl(
+    name = "rtl",
+    generator = "//generators:generate_all",
+    instr_dict = "//generators:instr_dict",
+)
+
+filegroup(
+    name = "lean_toolchain_file",
+    srcs = ["lean-toolchain"],
+)
+
+filegroup(
+    name = "known_unbuilt_modules",
+    srcs = ["known-unbuilt-modules.txt"],
+)
+
+filegroup(
+    name = "docs",
+    srcs = glob([
+        "docs/**/*",
+        "*.md",
+    ]),
+)
+
+filegroup(
+    name = "physical_srcs",
+    srcs = glob(["physical/**"]),
+)
+
+filegroup(
+    name = "root_shell_scripts",
+    srcs = glob([
+        "physical/*.sh",
+        "scripts/*.sh",
+    ]),
+)
+
+filegroup(
+    name = "root_python_scripts",
+    srcs = glob(
+        [
+            "*.py",
+            "physical/*.py",
+            "scripts/*.py",
+        ],
+        # No Python script sits at the root today.
+        allow_empty = True,
+    ),
+)
+
+test_suite(
+    name = "audits",
+    tests = [
+        "//generators:shoumei_roundtrip_test",
+        "//lean:integrity_tests",
+    ],
+)
+
+# `bazel run //:buildifier` formats every BUILD and .bzl file in place.
+buildifier(
+    name = "buildifier",
+    exclude_patterns = [
+        "./.git/*",
+        "./bazel-*/*",
+        "./third_party/*",
+    ],
+    lint_mode = "fix",
+    mode = "fix",
+)
+
+# `bazel test //:buildifier_test` fails on an unformatted BUILD or .bzl file.
+# no_sandbox lets the rule scan the workspace, so a new package needs no edit
+# here.  lint_mode=warn reports the lint findings without failing the test.
+buildifier_test(
+    name = "buildifier_test",
+    size = "small",
+    exclude_patterns = [
+        "./.git/*",
+        "./bazel-*/*",
+        "./third_party/*",
+    ],
+    lint_mode = "warn",
+    # `-make-location` covers `$(location ...)` in rule arguments.  Converting
+    # those to `$(rootpath ...)` touches most BUILD files, so it stays a
+    # separate change and the check reports the rest today.
+    lint_warnings = ["-make-location"],
+    mode = "diff",
+    no_sandbox = True,
+    verbose = True,
+    workspace = "//:MODULE.bazel",
+)
+
+test_suite(
+    name = "presubmit",
+    tests = [
+        ":audits",
+        "//cpp_sim:cpp_sim_compile_test",
+        "//testbench:all_tests",
+        "//testbench:coverage_test",
+        "//testbench/benchmarks",
+        "//tools:fst_inspect_test",
+        "//verification:extended",
+        "//verification:formal",
+        "//verification:formal_proofs",
+        "//verification:linters",
+        "//verification:spec_shims_test",
+        "//verification:synthesis",
+        "//verification:visuals_test",
+        "//viewer:viewer_bundle_test",
+    ],
+)

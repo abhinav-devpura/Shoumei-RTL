@@ -1,3 +1,6 @@
+# Bazel
+/bazel-*
+
 # LEAN4 / Lake
 /.lake/
 /build/
@@ -50,9 +53,6 @@ output/*/filelist.f
 # C++ sim build directory
 cpp_sim/build/
 
-# Claude Code local settings
-.claude/settings.local.json
-
 # IDEs
 .vscode/
 .idea/
@@ -67,7 +67,7 @@ verification/logs/
 verification/compositional-certs.txt
 *.smt2
 
-# Generated testbenches (produced by lake exe generate_all)
+# Generated testbenches (produced by bazel run //generators:generate_all)
 testbench/generated/**
 
 # Test ELF binaries

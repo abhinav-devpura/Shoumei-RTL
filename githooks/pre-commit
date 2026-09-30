@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pre-commit - fast local guards (installed via scripts/install-githooks.sh)
 #
-# Heavy validation stays in CI (lake build, verilator, cosim). This hook
+# Heavy validation stays in CI (bazel test //:presubmit). This hook
 # only catches what is instant and would spam CI: syntax errors, broken
 # workflow YAML, and stale generated manifests.
 #
@@ -35,9 +35,10 @@ fi
                 failed=1
             fi
         done
+        # -x follows the sources, which live in this repository.
         if command -v shellcheck > /dev/null 2>&1; then
             # shellcheck disable=SC2086
-            if ! shellcheck $sh_files; then
+            if ! shellcheck -x $sh_files; then
                 echo "pre-commit: fix shellcheck findings before committing" >&2
                 failed=1
             fi
@@ -64,15 +65,42 @@ fi
 
 # 4. Generated manifests stay fresh when lean/ changes
 if staged | grep -q '^lean/'; then
-    python3 scripts/gen-lean-root.py > /dev/null
-    if ! git diff --exit-code --quiet -- lean/Shoumei/All.lean; then
-        echo "pre-commit: lean/Shoumei/All.lean is stale; stage the regeneration" >&2
+    if [ ! -x "./bazel-bin/generators/generate_all" ]; then
+        bazel build //generators:generate_all > /dev/null 2>&1 || true
+    fi
+    if [ -x "./bazel-bin/generators/generate_all" ]; then
+        ./bazel-bin/generators/generate_all --gen-lean-root > /dev/null
+        if ! git diff --exit-code --quiet -- lean/Shoumei/All.lean; then
+            echo "pre-commit: lean/Shoumei/All.lean is stale; stage the regeneration (bazel run //generators:generate_all -- --gen-lean-root)" >&2
+            failed=1
+        fi
+        ./bazel-bin/generators/generate_all --project-map > /dev/null
+        if ! git diff --exit-code --quiet -- docs/project-map.md; then
+            echo "pre-commit: docs/project-map.md is stale; stage the regeneration (bazel run //generators:generate_all -- --project-map)" >&2
+            failed=1
+        fi
+    fi
+fi
+
+# 5. ASD-STE100 prose on the added lines (verification/ste-lint.py)
+if [ "${STE_LINT_DISABLE:-0}" != "1" ]; then
+    if ! python3 verification/ste-lint.py --diff; then
+        echo "pre-commit: fix the prose findings above, or set STE_LINT_DISABLE=1" >&2
         failed=1
     fi
-    python3 scripts/gen-project-map.py > /dev/null
-    if ! git diff --exit-code --quiet -- docs/project-map.md; then
-        echo "pre-commit: docs/project-map.md is stale; stage the regeneration" >&2
-        failed=1
+fi
+
+# 6. Bazel file formatting on the staged BUILD and .bzl files
+bzl_files=$(staged | grep -E '(^|/)(BUILD|BUILD\.bazel|MODULE\.bazel|WORKSPACE|WORKSPACE\.bzlmod)$|\.bzl$' || true)
+if [ -n "$bzl_files" ]; then
+    if command -v buildifier > /dev/null 2>&1; then
+        # shellcheck disable=SC2086
+        if ! buildifier -mode=check -lint=warn --warnings=-make-location $bzl_files; then
+            echo "pre-commit: format the files above (buildifier -mode=fix), or bazel run //:buildifier" >&2
+            failed=1
+        fi
+    else
+        echo "pre-commit: buildifier not on PATH, skip the Bazel format check" >&2
     fi
 fi
 

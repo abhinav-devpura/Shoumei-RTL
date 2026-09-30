@@ -24,7 +24,7 @@ if ! command -v yosys > /dev/null 2>&1; then
     exit 1
 fi
 if [[ ! -d "$SV_DIR" ]]; then
-    echo "ERROR: no SV dir: $SV_DIR (run make codegen first)"
+    echo "ERROR: no SV dir: $SV_DIR (run 'bazel build //:rtl' first)"
     exit 1
 fi
 
@@ -38,15 +38,15 @@ echo "==> DC-NXT-style lint (Yosys proxy): $SV_DIR"
 # RTL instantiates - so the lint exercises the same RTL that is synthesised.
 # (Yosys cannot parse `import "DPI-C"`, which is simulation-only syntax.)
 STUB_DIR=$(mktemp -d); trap 'rm -rf "$STUB_DIR"' EXIT
-"$PROJECT_ROOT/scripts/gen-sram-macros.sh" --stub --out "$STUB_DIR" > /dev/null
+"$PROJECT_ROOT/scripts/gen-sram-macros.sh" --stub --sv-dir "$SV_DIR" --out "$STUB_DIR" > /dev/null
 
 # Build the aggressive Yosys script
 SCRIPT=$(mktemp); trap 'rm -f "$SCRIPT"' EXIT
 {
-  find "$STUB_DIR" -maxdepth 1 -name '*.sv' -type f | sort | while read -r f; do
+  find -L "$STUB_DIR" -maxdepth 1 -name '*.sv' -type f | sort | while read -r f; do
     echo "read_verilog -sv -nolatches \"$f\""
   done
-  find "$SV_DIR" -maxdepth 1 -name '*.sv' -type f | sort | while read -r f; do
+  find -L "$SV_DIR" -maxdepth 1 -name '*.sv' -type f | sort | while read -r f; do
     echo "read_verilog -sv -nolatches -DSHOUMEI_SRAM_MACROS \"$f\""
   done
   echo "hierarchy -auto-top -check"
@@ -71,7 +71,11 @@ if [[ $RC -ne 0 ]] || [[ -n "$LINT_HITS" ]]; then
 fi
 
 echo "==> LINT-31/32/33 structural check (double-connects, undriven, ties)..."
-lake --no-ansi exe generate_all --lint-structural --sv-dir="$SV_DIR"
+if [[ -n "${GENERATOR:-}" ]]; then
+    "$GENERATOR" --lint-structural --sv-dir="$SV_DIR"
+elif [[ -x "$PROJECT_ROOT/bazel-bin/generators/generate_all" ]]; then
+    "$PROJECT_ROOT/bazel-bin/generators/generate_all" --lint-structural --sv-dir="$SV_DIR"
+fi
 
 echo "✓ LINT clean (no latches, no comb loops, no width/undriven/multi-driver pops)"
 exit 0

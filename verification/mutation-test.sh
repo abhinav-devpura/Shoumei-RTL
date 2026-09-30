@@ -11,10 +11,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-REPORT_DIR="$PROJECT_ROOT/output/mutation-test"
+PROJECT_ROOT="${PROJECT_ROOT:-$(dirname "$SCRIPT_DIR")}"
+REPORT_DIR="${REPORT_DIR:-${TEST_TMPDIR:-$PROJECT_ROOT/output/mutation-test}}"
 
 mkdir -p "$REPORT_DIR"
+
+# The scratch tree holds the sources and the oleans of the library. A
+# recompiled module replaces its olean in place.
+export LEAN_PATH="$PROJECT_ROOT/lean"
 
 # Colors
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -62,6 +66,8 @@ run_mutant() {
 
     # 1. Backup and apply mutation
     cp "$file" "$file.mutbak"
+    local olean="${file%.lean}.olean"
+    [ -f "$olean" ] && cp "$olean" "$olean.mutbak"
     python3 -c '
 import sys
 path, s_from, s_to = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -73,8 +79,32 @@ with open(path, "w") as f:
     f.write(content.replace(s_from, s_to, 1))
 ' "$file" "$sed_from" "$sed_to"
 
-    # 2. Test semantic / L1-L3 proof
-    if ! lake --no-ansi build "$target" > /dev/null 2>&1; then
+    # 2. Test semantic / L1-L3 proof.
+    #
+    # The mutation is in the circuit module, and Lean reads the olean of an
+    # import from the search path.  A stale olean would hide the mutation, so
+    # the mutated module is compiled first into a work directory that comes
+    # first on the search path.  The proof fails only if it sees the mutation.
+    local target_file="lean/${target//.//}.lean"
+    local killed=false
+
+    if ! command -v lean > /dev/null 2>&1 || [ ! -f "$target_file" ]; then
+        echo "ERROR: lean not found in PATH or target file missing: $target_file" >&2
+        exit 1
+    fi
+
+    # Recompile the mutated module into its olean.  A plain `lean <file>` run
+    # only checks the file, so the proof would read the unmutated olean.
+    if ! lean -R lean -o "$olean" "$file"; then
+        echo "ERROR: the mutated module does not compile: $file" >&2
+        exit 1
+    fi
+
+    if ! lean -R lean "$target_file" > /dev/null 2>&1; then
+        killed=true
+    fi
+
+    if [ "$killed" = true ]; then
         SEMANTIC_KILLED=$((SEMANTIC_KILLED + 1))
         echo -e "  Semantic Proof (L1-L3): ${GREEN}KILLED${NC} (Type checker caught mutation)"
     else
@@ -83,6 +113,7 @@ with open(path, "w") as f:
 
     # 3. Restore from backup for clean baseline
     mv "$file.mutbak" "$file"
+    [ -f "$olean.mutbak" ] && mv "$olean.mutbak" "$olean"
     echo ""
 }
 
@@ -94,7 +125,7 @@ run_mutant \
     "lean/Shoumei/Circuits/Combinational/RippleCarryAdder.lean" \
     "Shoumei.Circuits.Combinational.RippleCarryAdderProofs" \
     "fullAdderCircuit.inline wireMap" \
-    "{ fullAdderCircuit with gates := fullAdderCircuit.gates.map (fun g => if g.output.name == \"ab_xor\" then { g with gateType := GateType.OR } else g) }.inline wireMap"
+    "{ fullAdderCircuit with gates := fullAdderCircuit.gates.map (fun (g : Gate) => if g.output.name == \"ab_xor\" then { g with gateType := GateType.OR } else g) }.inline wireMap"
 
 # Mutant 2: Gate Swap in Comparator (diff OR tree changed to AND)
 # Inverts equality condition, preserves exact gate count (44 gates)
@@ -124,7 +155,7 @@ run_mutant \
     "lean/Shoumei/Circuits/Combinational/RippleCarryAdder.lean" \
     "Shoumei.Circuits.Combinational.RippleCarryAdderProofs" \
     "fullAdderCircuit.inline wireMap" \
-    "{ fullAdderCircuit with gates := fullAdderCircuit.gates.map (fun g => if g.output.name == \"ab_and\" then { g with gateType := GateType.XOR } else g) }.inline wireMap"
+    "{ fullAdderCircuit with gates := fullAdderCircuit.gates.map (fun (g : Gate) => if g.output.name == \"ab_and\" then { g with gateType := GateType.XOR } else g) }.inline wireMap"
 
 # Mutant 5: Pin Swap in Register (reset tied to clock)
 # Breaks reset zeroing and data latching, preserves exact gate count (n gates)
@@ -286,7 +317,8 @@ if [ "$SEM_SCORE" -eq 100 ]; then
     echo -e "  ${GREEN}✓ All mutants successfully killed by semantic proofs (100% Mutation Score)${NC}"
     echo -e "  ${DIM}Structural proofs alone had 0% mutation score, proving the necessity of L1-L3 semantic coverage.${NC}"
 else
-    echo -e "  ${RED}✗ Some mutants survived semantic proofs!${NC}"
+    echo -e "  ${RED}✗ Some mutants survived semantic proofs!${NC}" >&2
+    exit 1
 fi
 echo ""
 

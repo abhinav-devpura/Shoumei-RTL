@@ -1,0 +1,16 @@
+load("@rules_verilator//verilator:defs.bzl", "verilator_toolchain")
+
+package(default_visibility = ["//visibility:public"])
+
+# The `verilator` module builds the pinned release from source in the sandbox.
+# The generated model and the runtime headers therefore come from one version.
+verilator_toolchain(
+    name = "verilator_impl",
+    verilator = "@verilator//:verilator_executable",
+)
+
+toolchain(
+    name = "verilator_toolchain",
+    toolchain = ":verilator_impl",
+    toolchain_type = "@rules_verilator//verilator:toolchain_type",
+)
