@@ -6,11 +6,11 @@ Run the generator again after a source change.  Composition edges come
 from `moduleName :=` references between circuits, certificates from the
 Lean registry, and docs from each file's leading comment block.
 
-- Lean files: **288**
-- Circuits with a literal `name :=` (graph nodes): **98**
+- Lean files: **291**
+- Circuits with a literal `name :=` (graph nodes): **99**
 - Compositional certificates (Lean registry): **103**
 - Refinement atoms (Lean registry): **13**
-- Proof files: **79**
+- Proof files: **80**
 
 Parameterised builders (`mkQueueNStructural`, `mkRegisterN`,
 `mkMuxTree`, `mkDecoder`, ...) build their circuit names by
@@ -26,8 +26,8 @@ The label is the count of distinct instantiations that cross it.
 
 ```mermaid
 graph TD
-  Shoumei_Circuits_Combinational["Shoumei/Circuits/Combinational<br/>41 circuits"]
-  Shoumei_Circuits_Sequential["Shoumei/Circuits/Sequential<br/>22 circuits"]
+  Shoumei_Circuits_Combinational["Shoumei/Circuits/Combinational<br/>43 circuits"]
+  Shoumei_Circuits_Sequential["Shoumei/Circuits/Sequential<br/>21 circuits"]
   Shoumei_DSL["Shoumei/DSL<br/>2 circuits"]
   Shoumei_Examples["Shoumei/Examples<br/>1 circuits"]
   Shoumei_Interconnect_TileLink["Shoumei/Interconnect/TileLink<br/>1 circuits"]
@@ -41,7 +41,7 @@ graph TD
   Shoumei_RISCV_Renaming["Shoumei/RISCV/Renaming<br/>2 circuits"]
   Shoumei_RISCV_Retirement["Shoumei/RISCV/Retirement<br/>3 circuits"]
   Shoumei_SoC["Shoumei/SoC<br/>1 circuits"]
-  Shoumei_RISCV_Execution -->|23| Shoumei_Circuits_Sequential
+  Shoumei_RISCV_Execution -->|17| Shoumei_Circuits_Sequential
   Shoumei_RISCV_Execution -->|11| Shoumei_Circuits_Combinational
   Shoumei_SoC -->|6| Shoumei_Peripherals
   Shoumei_Circuits_Sequential -->|4| Shoumei_Circuits_Combinational
@@ -76,11 +76,12 @@ graph TD
 | `Divider32` | Shoumei/Circuits/Sequential | 2 | yes |  | yes | yes |
 | `Divider64` | Shoumei/Circuits/Sequential | 2 | yes |  | yes | yes |
 | `FPAdder` | Shoumei/Circuits/Sequential | 4 | yes |  | yes | yes |
-| `FPAdderD` | Shoumei/Circuits/Sequential | 4 | yes |  | yes | yes |
-| `FPAdderD_Stage1_Unpack` | Shoumei/Circuits/Sequential | 3 |  |  | yes | yes |
-| `FPAdderD_Stage2_Align` | Shoumei/Circuits/Sequential | 3 |  |  | yes | yes |
-| `FPAdderD_Stage3_AddSub` | Shoumei/Circuits/Sequential | 3 |  |  | yes | yes |
-| `FPAdderD_Stage4_NormRound` | Shoumei/Circuits/Sequential | 3 |  |  | yes | yes |
+| `FPAdderD` | Shoumei/Circuits/Sequential | 5 | yes |  | yes | yes |
+| `FPAdderD_Stage1_Unpack` | Shoumei/Circuits/Sequential | 4 |  |  | yes | yes |
+| `FPAdderD_Stage2_Align` | Shoumei/Circuits/Sequential | 4 |  |  | yes | yes |
+| `FPAdderD_Stage3_AddSub` | Shoumei/Circuits/Sequential | 4 |  |  | yes | yes |
+| `FPAdderD_Stage4a_Norm` | Shoumei/Circuits/Sequential | 4 |  |  | yes | yes |
+| `FPAdderD_Stage4b_Round` | Shoumei/Circuits/Sequential | 4 |  |  | yes | yes |
 | `FPAdder_Stage1_Unpack` | Shoumei/Circuits/Sequential | 3 |  |  | yes | yes |
 | `FPAdder_Stage2_Align` | Shoumei/Circuits/Sequential | 3 |  |  | yes | yes |
 | `FPAdder_Stage3_AddSub` | Shoumei/Circuits/Sequential | 3 |  |  | yes | yes |
@@ -93,10 +94,8 @@ graph TD
 | `FPDividerD` | Shoumei/Circuits/Sequential | 0 | yes |  | yes | yes |
 | `FPDoubleConverter` | Shoumei/Circuits/Combinational | 0 | yes |  | yes | yes |
 | `FPDoubleMisc` | Shoumei/Circuits/Combinational | 0 | yes |  | yes | yes |
-| `FPExecUnit` | Shoumei/RISCV/Execution | 15 | yes |  |  | yes |
-| `FPExecUnit_D` | Shoumei/RISCV/Execution | 15 | yes |  |  | yes |
-| `FPFMA` | Shoumei/Circuits/Sequential | 2 | yes |  | yes | yes |
-| `FPFMAD` | Shoumei/Circuits/Sequential | 2 | yes |  | yes | yes |
+| `FPExecUnit` | Shoumei/RISCV/Execution | 12 | yes |  |  | yes |
+| `FPExecUnit_D` | Shoumei/RISCV/Execution | 12 | yes |  |  | yes |
 | `FPLongConverter` | Shoumei/Circuits/Combinational | 2 | yes |  | yes | yes |
 | `FPMisc` | Shoumei/Circuits/Combinational | 4 | yes |  | yes | yes |
 | `FPMultiplier` | Shoumei/Circuits/Sequential | 0 | yes |  | yes | yes |
@@ -112,6 +111,8 @@ graph TD
 | `FullAdder` | Shoumei/Examples | 0 |  | yes | yes | yes |
 | `GPIO` | Shoumei/Peripherals | 0 |  |  | yes | yes |
 | `Int64ToFP` | Shoumei/Circuits/Combinational | 0 |  |  | yes | yes |
+| `KoggeStoneAdder106` | Shoumei/Circuits/Combinational | 0 |  |  | yes | yes |
+| `KoggeStoneAdder106NoCin` | Shoumei/Circuits/Combinational | 0 |  |  | yes | yes |
 | `KoggeStoneAdder32` | Shoumei/Circuits/Combinational | 0 |  |  | yes | yes |
 | `KoggeStoneAdder32NoCin` | Shoumei/Circuits/Combinational | 0 |  |  | yes | yes |
 | `KoggeStoneAdder64` | Shoumei/Circuits/Combinational | 0 |  |  | yes | yes |
@@ -161,10 +162,10 @@ graph TD
 ## Mechanical gaps
 
 - **0** circuit files without a leading doc comment
-- **93** circuits with no `Circuit satisfies Behavior` atom
+- **94** circuits with no `Circuit satisfies Behavior` atom
 - **23** circuits with no `*Proofs.lean` mentioning them
-- **57** circuits that instantiate nothing (leaves)
-- **43** circuits nothing else instantiates (tops)
+- **59** circuits that instantiate nothing (leaves)
+- **45** circuits nothing else instantiates (tops)
 
 ## Known gaps (hand-maintained)
 

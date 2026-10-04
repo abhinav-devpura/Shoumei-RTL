@@ -685,7 +685,11 @@ def resolveBusRef (c : Circuit) (wireGroupMap : Std.HashMap String (SignalGroup 
   else
     let slices := partitionIntoSlices wireGroupMap wires
     let resolvedSlices := slices.map (resolveContiguousSlice c wireGroupMap wireToGroup wireToIndex)
-    if resolvedSlices.all Option.isSome then
+    -- An empty element would concatenate into `{, x}`: invalid SystemVerilog with
+    -- no diagnostic.  Refuse instead, so the caller falls back to per-bit
+    -- assignments.  (Seen once from a wire built by an out-of-range index, where
+    -- the sanitised name came out empty.)
+    if resolvedSlices.all (fun r => r.isSome && !r.get!.isEmpty) then
       let sliceStrs := resolvedSlices.filterMap id
       match sliceStrs with
       | [single] => some single
@@ -695,6 +699,106 @@ def resolveBusRef (c : Circuit) (wireGroupMap : Std.HashMap String (SignalGroup 
     else
       none
 
+/-- Find all signal group names that participate in cycles in the
+    combinational logic dependency graph.
+    Signal groups in cycles must NOT be collapsed into vector continuous
+    assignments, as doing so creates self-referential net assignments
+    (combinational loops in Verilog/RTLIL). -/
+def findCyclicSignalGroups (wireGroupMap : Std.HashMap String (SignalGroup × Nat))
+    (combGates : List Gate) : Std.HashSet String := Id.run do
+  let nodeOf (w : String) : String :=
+    match wireGroupMap.get? w with
+    | some (sg, _) => sg.name
+    | none => w
+
+  let mut nodeToId : Std.HashMap String Nat := {}
+  let mut idToNode : Array String := #[]
+  let mut isGroupNode : Array Bool := #[]
+
+  let getOrCreateId (name : String) (isGroup : Bool)
+      (m : Std.HashMap String Nat) (arr : Array String) (grps : Array Bool) :
+      (Nat × Std.HashMap String Nat × Array String × Array Bool) :=
+    match m.get? name with
+    | some id => (id, m, arr, grps)
+    | none =>
+        let id := arr.size
+        (id, m.insert name id, arr.push name, grps.push isGroup)
+
+  for g in combGates do
+    let dstName := nodeOf g.output.name
+    let dstIsGroup := (wireGroupMap.get? g.output.name).isSome
+    let (_, m1, a1, g1) := getOrCreateId dstName dstIsGroup nodeToId idToNode isGroupNode
+    nodeToId := m1; idToNode := a1; isGroupNode := g1
+    for inp in g.inputs do
+      let srcName := nodeOf inp.name
+      let srcIsGroup := (wireGroupMap.get? inp.name).isSome
+      let (_, m2, a2, g2) := getOrCreateId srcName srcIsGroup nodeToId idToNode isGroupNode
+      nodeToId := m2; idToNode := a2; isGroupNode := g2
+
+  let n := idToNode.size
+  if n == 0 then return {}
+
+  let mut adj : Array (List Nat) := Array.replicate n []
+  let mut selfLoops : Array Bool := Array.replicate n false
+
+  for g in combGates do
+    let dstId := nodeToId.get! (nodeOf g.output.name)
+    for inp in g.inputs do
+      let srcId := nodeToId.get! (nodeOf inp.name)
+      if srcId == dstId then
+        selfLoops := selfLoops.set! srcId true
+      else
+        adj := adj.set! srcId (dstId :: adj[srcId]!)
+
+  let mut dfn : Array Nat := Array.replicate n 0
+  let mut low : Array Nat := Array.replicate n 0
+  let mut onStack : Array Bool := Array.replicate n false
+  let mut stack : List Nat := []
+  let mut timer : Nat := 0
+  let mut cyclicNodes : Std.HashSet String := {}
+
+  for start in [0:n] do
+    if dfn[start]! == 0 then
+      let mut callStack : List (Nat × List Nat) := [(start, adj[start]!)]
+      timer := timer + 1
+      dfn := dfn.set! start timer
+      low := low.set! start timer
+      onStack := onStack.set! start true
+      stack := start :: stack
+
+      while !callStack.isEmpty do
+        match callStack with
+        | [] => break
+        | (u, []) :: rest =>
+            callStack := rest
+            if low[u]! == dfn[u]! then
+              let mut scc : List Nat := []
+              while !stack.isEmpty do
+                let top := stack.head!
+                stack := stack.tail!
+                onStack := onStack.set! top false
+                scc := top :: scc
+                if top == u then break
+              if scc.length > 1 || selfLoops[u]! then
+                for v in scc do
+                  if isGroupNode[v]! then
+                    cyclicNodes := cyclicNodes.insert idToNode[v]!
+            if let (parent, _) :: _ := callStack then
+              low := low.set! parent (min low[parent]! low[u]!)
+        | (u, v :: vRest) :: rest =>
+            callStack := (u, vRest) :: rest
+            if dfn[v]! == 0 then
+              timer := timer + 1
+              dfn := dfn.set! v timer
+              low := low.set! v timer
+              onStack := onStack.set! v true
+              stack := v :: stack
+              callStack := (v, adj[v]!) :: callStack
+            else if onStack[v]! then
+              low := low.set! u (min low[u]! dfn[v]!)
+
+  cyclicNodes
+
 /-- Generate all combinational logic assignments with O(N) bus collapsing -/
 def generateCombLogic (ctx : Context) (c : Circuit) : String := Id.run do
   let combGates := c.gates.filter (fun g => !g.gateType.isDFF)
@@ -702,6 +806,7 @@ def generateCombLogic (ctx : Context) (c : Circuit) : String := Id.run do
   else
     -- Step 1: Lookup tables from Context
     let wireGroupMap := ctx.wireGroupMap
+    let cyclicGroups := findCyclicSignalGroups wireGroupMap combGates
 
     let mut gateByOutput : Std.HashMap String (Nat × Gate) := {}
     for (idx, g) in combGates.enum do
@@ -721,7 +826,8 @@ def generateCombLogic (ctx : Context) (c : Circuit) : String := Id.run do
 
     for sg in allSgs do
       let isOutput := c.outputs.any (fun ow => sg.wires.any (fun sw => sw.name == ow.name))
-      if !(isOutput && outputNeedsIndividualPorts ctx.wireToGroup ctx.wireToIndex c sg) then
+      if !(isOutput && outputNeedsIndividualPorts ctx.wireToGroup ctx.wireToIndex c sg) &&
+         !cyclicGroups.contains sg.name then
         let gatesOpt := sg.wires.map (fun w => gateByOutput[w.name]?)
         if gatesOpt.all Option.isSome then
           let entries := gatesOpt.filterMap id
@@ -1358,7 +1464,7 @@ def dpiImportDecls : String := joinLines [
   "`ifndef SHOUMEI_SRAM_MACROS",
   s!"  import \"DPI-C\" function int  sram_dpi_resolve(input string path, input int depth, input int width_bytes);",
   s!"  import \"DPI-C\" function void sram_dpi_write(input int id, input int unsigned addr, input bit [{dpiMaxWidth - 1}:0] data, input int width_bytes);",
-  s!"  import \"DPI-C\" function void sram_dpi_read(input int id, input int unsigned addr, input int width_bytes, output bit [{dpiMaxWidth - 1}:0] out);",
+  s!"  import \"DPI-C\" function void sram_dpi_read(input int id, input int unsigned addr, input int width_bytes, input int epoch, output bit [{dpiMaxWidth - 1}:0] out);",
   "`endif"
 ]
 
@@ -1378,6 +1484,7 @@ def generateRAMFallback (ctx : Context) (c : Circuit) (ram : RAMPrimitive) : Str
   let rdTmp     := s!"{ram.name}_dpi_rdata"
   let wrTmp     := s!"{ram.name}_dpi_wdata"
   let idVar     := s!"{ram.name}_dpi_id"
+  let epochVar  := s!"{ram.name}_dpi_epoch"
   let widthSlice := s!"[{ram.width - 1}:0]"
   -- one write port (all our RAMs have exactly one)
   let writeSV := ram.writePorts.enum.map (fun (_, wp) =>
@@ -1388,7 +1495,10 @@ def generateRAMFallback (ctx : Context) (c : Circuit) (ram : RAMPrimitive) : Str
     joinLines [
       s!"  assign {wrTmp}{widthSlice} = {dataExpr};",
       s!"  always @(posedge {clkRef})",
-      s!"    if ({enRef}) sram_dpi_write({idVar}, 32'({addrExpr}), {wrTmp}, {widthBytes});"
+      s!"    if ({enRef}) begin",
+      s!"      sram_dpi_write({idVar}, 32'({addrExpr}), {wrTmp}, {widthBytes});",
+      s!"      {epochVar} <= {epochVar} + 1;",
+      s!"    end"
     ])
   -- one read port: the array contract is a combinational read (the caches use
   -- the data in the same cycle they present the address), so the DPI call sits
@@ -1397,15 +1507,19 @@ def generateRAMFallback (ctx : Context) (c : Circuit) (ram : RAMPrimitive) : Str
     let addrExpr := portAddrExpr ctx c rp.addr
     let dataExpr := portAddrExpr ctx c rp.data
     joinLines [
-      s!"  always_comb sram_dpi_read({idVar}, 32'({addrExpr}), {widthBytes}, {rdTmp});",
+      s!"  always_comb sram_dpi_read({idVar}, 32'({addrExpr}), {widthBytes}, {epochVar}, {rdTmp});",
       s!"  assign {dataExpr} = {rdTmp}{widthSlice};"
     ])
   joinLines ([
     s!"  // DPI-C simulation model (physical/sim-dpi/sram_dpi.c)",
     s!"  int          {idVar};",
+    s!"  int          {epochVar};",
     s!"  bit [{dpiMaxWidth - 1}:0] {rdTmp};",
     s!"  bit [{dpiMaxWidth - 1}:0] {wrTmp};",
-    s!"  initial {idVar} = sram_dpi_resolve($sformatf(\"%m.{ram.name}\"), {ram.depth}, {widthBytes});"]
+    s!"  initial begin",
+    s!"    {idVar} = sram_dpi_resolve($sformatf(\"%m.{ram.name}\"), {ram.depth}, {widthBytes});",
+    s!"    {epochVar} = 0;",
+    s!"  end"]
     ++ writeSV ++ readSV)
 
 /-- Emit a foundry/OpenRAM SRAM macro instantiation for a RAM primitive.

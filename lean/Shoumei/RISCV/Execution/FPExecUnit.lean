@@ -794,84 +794,13 @@ def mkFPExecUnit : Circuit :=
       Gate.mkMUX (t4_exc[i]!) (hSqrt.exc[i]!) hSqrt.v (exceptions[i]!)) ++
     [Gate.mkOR t4_valid hSqrt.v valid_out]
 
-  -- ══════════════════════════════════════════════
-  -- Completion Shift Register (comp_sr) & Collision Tracking
-  -- Latencies: MUL=2, ADD=3, FMA=5, MISC=0 (SP)
-  -- Collision check uses raw un-gated opcode decodes to prevent combinational loops.
-  -- ══════════════════════════════════════════════
-  let sr_1 := Wire.mk "sr_1"
-  let sr_2 := Wire.mk "sr_2"
-  let sr_3 := Wire.mk "sr_3"
-  let sr_4 := Wire.mk "sr_4"
-  let sr_5 := Wire.mk "sr_5"
-  let sr_6 := Wire.mk "sr_6"
-
-  let fma_collide := Wire.mk "fma_collide"
-  let add_collide := Wire.mk "add_collide"
-  let mul_collide := Wire.mk "mul_collide"
-  let misc_collide := Wire.mk "misc_collide"
-  let any_pipe_output := Wire.mk "any_pipe_output"
-  let will_collide_am := Wire.mk "will_collide_am"
-  let will_collide_fma := Wire.mk "will_collide_fma"
-  let will_collide := Wire.mk "will_collide"
-
-  -- Detect any pipeline output active
-  let pout_am := Wire.mk "pout_am"
-  let pout_fs := Wire.mk "pout_fs"
-  let pout_amfs := Wire.mk "pout_amfs"
-  let pout_gates := [
-    Gate.mkOR add_valid mul_valid pout_am,
-    Gate.mkOR fma_valid sqrt_valid pout_fs,
-    Gate.mkOR pout_am pout_fs pout_amfs,
-    Gate.mkOR pout_amfs div_valid any_pipe_output
-  ]
-
-  let collision_check_gates := [
-    Gate.mkAND op_is_fma sr_5 fma_collide,
-    Gate.mkAND op_is_add_sub sr_3 add_collide,
-    Gate.mkAND op_is_mul sr_2 mul_collide,
-    Gate.mkAND op_is_misc any_pipe_output misc_collide,
-    Gate.mkOR add_collide mul_collide will_collide_am,
-    Gate.mkOR fma_collide misc_collide will_collide_fma,
-    Gate.mkOR will_collide_am will_collide_fma will_collide
-  ]
-
-  -- Shift register next state: updates only when valid_in is high
-  let sr_next_1 := Wire.mk "sr_next_1"
-  let sr_next_2 := Wire.mk "sr_next_2"
-  let sr_next_3 := Wire.mk "sr_next_3"
-  let sr_next_4 := Wire.mk "sr_next_4"
-  let sr_next_5 := Wire.mk "sr_next_5"
-  let sr_next_6 := Wire.mk "sr_next_6"
-
-  let sr_update_gates := [
-    Gate.mkOR sr_2 mul_valid_in sr_next_1,
-    Gate.mkOR sr_3 add_valid_in sr_next_2,
-    Gate.mkBUF sr_4 sr_next_3,
-    Gate.mkOR sr_5 fma_valid_in sr_next_4,
-    Gate.mkBUF sr_6 sr_next_5,
-    Gate.mkBUF zero sr_next_6
-  ]
-
-  let comp_sr_insts : List CircuitInstance := [
-    { moduleName := "DFlipFlop", instName := "u_comp_sr_1",
-      portMap := [("d", sr_next_1), ("q", sr_1), ("clock", clock), ("reset", reset_misc)] },
-    { moduleName := "DFlipFlop", instName := "u_comp_sr_2",
-      portMap := [("d", sr_next_2), ("q", sr_2), ("clock", clock), ("reset", reset_misc)] },
-    { moduleName := "DFlipFlop", instName := "u_comp_sr_3",
-      portMap := [("d", sr_next_3), ("q", sr_3), ("clock", clock), ("reset", reset_misc)] },
-    { moduleName := "DFlipFlop", instName := "u_comp_sr_4",
-      portMap := [("d", sr_next_4), ("q", sr_4), ("clock", clock), ("reset", reset_misc)] },
-    { moduleName := "DFlipFlop", instName := "u_comp_sr_5",
-      portMap := [("d", sr_next_5), ("q", sr_5), ("clock", clock), ("reset", reset_misc)] },
-    { moduleName := "DFlipFlop", instName := "u_comp_sr_6",
-      portMap := [("d", sr_next_6), ("q", sr_6), ("clock", clock), ("reset", reset_misc)] }
-  ]
-
+  -- No collision tracking: the FP unit takes one operation per cycle and each
+  -- source parks its result in a flow queue until the mux and the FIFO take it,
+  -- so a result can never be dropped.  Only the iterative units and a parked
+  -- result make the unit busy.
   let busy_gate := [
     Gate.mkOR div_busy sqrt_busy (Wire.mk "busy_ds"),
-    Gate.mkOR (Wire.mk "busy_ds") hold_busy (Wire.mk "busy_dsh"),
-    Gate.mkOR (Wire.mk "busy_dsh") will_collide busy
+    Gate.mkOR (Wire.mk "busy_ds") hold_busy busy
   ]
 
   -- result_is_int: detect when the FP result targets INT register file
@@ -934,9 +863,9 @@ def mkFPExecUnit : Circuit :=
     gates := reset_buf_gates ++ decode_gates ++ misc_valid_gate ++
              mux1_gates ++ mux2_gates ++ mux3_gates ++ mux4_gates ++ mux5_gates ++
              hold_gates ++ hold_busy_gates ++
-             pout_gates ++ collision_check_gates ++ sr_update_gates ++ busy_gate ++ int_result_gates
+             busy_gate ++ int_result_gates
     instances := [misc_inst, adder_inst, mul_inst, fma_inst, div_inst, sqrt_inst] ++
-                 comp_sr_insts ++ hold_insts
+                 hold_insts
     signalGroups := [
       { name := "src1", width := 32, wires := src1 },
       { name := "src2", width := 32, wires := src2 },
@@ -1361,7 +1290,7 @@ def mkFPExecUnitD : Circuit :=
       (List.range 64 |>.map fun i => (s!"src1_{i}", long_src1[i]!)) ++
       (List.range 3 |>.map fun i => (s!"op_{i}", long_op[i]!)) ++
       (List.range 3 |>.map fun i => (s!"rm_{i}", rm[i]!)) ++
-      [ ("zero", zero), ("one", one) ] ++
+      [ ("clock", clock), ("reset", reset_misc_dp), ("zero", zero), ("one", one) ] ++
       (List.range 64 |>.map fun i => (s!"result_{i}", conv_long_res[i]!)) ++
       (List.range 5 |>.map fun i => (s!"exc_{i}", conv_long_exc[i]!)) ++
       [ ("result_is_int", conv_long_rint) ]
@@ -1579,8 +1508,6 @@ def mkFPExecUnitD : Circuit :=
 
   let misc_res_pre := makeIndexedWires "misc_res_pre" 64
   let misc_exc_pre := makeIndexedWires "misc_exc_pre" 5
-  let misc_result := makeIndexedWires "misc_res" 64
-  let misc_exc := makeIndexedWires "misc_exc" 5
   let misc_valid := Wire.mk "misc_valid"
   let misc_merge_gates :=
     (List.range 64 |>.flatMap fun i =>
@@ -1598,28 +1525,48 @@ def mkFPExecUnitD : Circuit :=
       let dp_sub_exc := Wire.mk s!"m_dpexc_{i}"
       [Gate.mkMUX (misc_dp_exc[i]!) (conv_dp_exc[i]!) is_dp_conv dp_sub_exc,
        Gate.mkMUX (misc_sp_exc[i]!) dp_sub_exc is_dp (misc_exc_pre[i]!)]) ++
-    (List.range 64 |>.map fun i =>
-      Gate.mkMUX (misc_res_pre[i]!) (conv_long_res[i]!) is_long_conv (misc_result[i]!)) ++
-    (List.range 5 |>.map fun i =>
-      Gate.mkMUX (misc_exc_pre[i]!) (conv_long_exc[i]!) is_long_conv (misc_exc[i]!)) ++
     [Gate.mkOR misc_valid_sp misc_valid_dp misc_valid]
+
+  let dp_misc_or_conv_rint := Wire.mk "dp_rint_comb"
+  let active_writes_int_pre := Wire.mk "active_writes_int_pre"
+  let active_wint_pre_gates := [
+    Gate.mkMUX misc_dp_rint conv_dp_rint is_dp_conv dp_misc_or_conv_rint,
+    Gate.mkMUX sp_writes_int dp_misc_or_conv_rint is_dp active_writes_int_pre
+  ]
 
   -- ══════════════════════════════════════════════
   -- 1-Cycle Pipeline Register for Misc/Converter Path
   -- Decouples RS issue + 64-bit converter from CDB mux
   -- ══════════════════════════════════════════════
-  let misc_reg_result := makeIndexedWires "misc_reg_res" 64
+  let misc_reg_res_pre := makeIndexedWires "misc_reg_res_pre" 64
   let misc_reg_tag := makeIndexedWires "misc_reg_tag" 6
-  let misc_reg_exc := makeIndexedWires "misc_reg_exc" 5
+  let misc_reg_exc_pre := makeIndexedWires "misc_reg_exc_pre" 5
   let misc_reg_valid := Wire.mk "misc_reg_valid"
-  let misc_reg_writes_int := Wire.mk "misc_reg_rint"
+  let is_long_conv_reg := Wire.mk "is_long_conv_reg"
+  let active_writes_int_reg := Wire.mk "act_wint_reg"
 
   let misc_pipe_dffs :=
-    (List.range 64 |>.map fun i => Gate.mkDFF (misc_result[i]!) clock reset_misc_dp (misc_reg_result[i]!)) ++
-    (List.range 6 |>.map fun i => Gate.mkDFF (dest_tag[i]!) clock reset_misc_dp (misc_reg_tag[i]!)) ++
-    (List.range 5 |>.map fun i => Gate.mkDFF (misc_exc[i]!) clock reset_misc_dp (misc_reg_exc[i]!)) ++
+    (List.range 64 |>.map fun i =>
+      Gate.mkDFF (misc_res_pre[i]!) clock reset_misc_dp (misc_reg_res_pre[i]!)) ++
+    (List.range 6 |>.map fun i =>
+      Gate.mkDFF (dest_tag[i]!) clock reset_misc_dp (misc_reg_tag[i]!)) ++
+    (List.range 5 |>.map fun i =>
+      Gate.mkDFF (misc_exc_pre[i]!) clock reset_misc_dp (misc_reg_exc_pre[i]!)) ++
     [Gate.mkDFF misc_valid clock reset_misc_dp misc_reg_valid,
-     Gate.mkDFF (Wire.mk "active_writes_int") clock reset_misc_dp misc_reg_writes_int]
+     Gate.mkDFF is_long_conv clock reset_misc_dp is_long_conv_reg,
+     Gate.mkDFF active_writes_int_pre clock reset_misc_dp active_writes_int_reg]
+
+  let misc_reg_result := makeIndexedWires "misc_reg_res" 64
+  let misc_reg_exc := makeIndexedWires "misc_reg_exc" 5
+  let misc_reg_writes_int := Wire.mk "misc_reg_rint"
+  let misc_out_mux_gates :=
+    (List.range 64 |>.map fun i =>
+      Gate.mkMUX (misc_reg_res_pre[i]!) (conv_long_res[i]!)
+        is_long_conv_reg (misc_reg_result[i]!)) ++
+    (List.range 5 |>.map fun i =>
+      Gate.mkMUX (misc_reg_exc_pre[i]!) (conv_long_exc[i]!)
+        is_long_conv_reg (misc_reg_exc[i]!)) ++
+    [Gate.mkMUX active_writes_int_reg conv_long_rint is_long_conv_reg misc_reg_writes_int]
 
   -- ══════════════════════════════════════════════
   -- Per-source result queues
@@ -1712,99 +1659,12 @@ def mkFPExecUnitD : Circuit :=
     (List.range 5 |>.map fun i => Gate.mkMUX (t4_exc[i]!) (hSqrt.exc[i]!) hSqrt.v (exceptions[i]!)) ++
     [Gate.mkOR t4_valid hSqrt.v valid_out]
 
-  -- ══════════════════════════════════════════════
-  -- Completion Shift Register (comp_sr) & Collision Tracking (DP)
-  -- Latencies:
-  --   SP: MUL=2, ADD=3, FMA=5, MISC=1
-  --   DP: MUL=3, ADD=3, FMA=7, MISC=1
-  -- ══════════════════════════════════════════════
-  let sr_1 := Wire.mk "sr_1_d"
-  let sr_2 := Wire.mk "sr_2_d"
-  let sr_3 := Wire.mk "sr_3_d"
-  let sr_4 := Wire.mk "sr_4_d"
-  let sr_5 := Wire.mk "sr_5_d"
-  let sr_6 := Wire.mk "sr_6_d"
-  let sr_7 := Wire.mk "sr_7_d"
-
-  let op_is_fma_sp := Wire.mk "op_is_fma_sp"
-  let op_is_fma_dp := Wire.mk "op_is_fma_dp"
-  let op_is_mul_sp := Wire.mk "op_is_mul_sp"
-  let op_is_mul_dp := Wire.mk "op_is_mul_dp"
-
-  let fma_sp_collide := Wire.mk "fma_sp_collide_d"
-  let fma_dp_collide := Wire.mk "fma_dp_collide_d"
-  let mul_sp_collide := Wire.mk "mul_sp_collide_d"
-  let mul_dp_collide := Wire.mk "mul_dp_collide_d"
-  let add_collide := Wire.mk "add_collide_d"
-  let misc_collide := Wire.mk "misc_collide_d"
-  let fma_collide := Wire.mk "fma_collide_d"
-  let mul_collide := Wire.mk "mul_collide_d"
-  let will_collide_am := Wire.mk "will_collide_am_d"
-  let will_collide_fma := Wire.mk "will_collide_fma_d"
-  let will_collide := Wire.mk "will_collide_d"
-
-  let collision_check_gates := [
-    Gate.mkAND op_is_fma is_sp op_is_fma_sp,
-    Gate.mkAND op_is_fma is_dp op_is_fma_dp,
-    Gate.mkAND op_is_mul is_sp op_is_mul_sp,
-    Gate.mkAND op_is_mul is_dp op_is_mul_dp,
-
-    Gate.mkAND op_is_fma_sp sr_5 fma_sp_collide,
-    Gate.mkAND op_is_fma_dp sr_7 fma_dp_collide,
-    Gate.mkAND op_is_mul_sp sr_2 mul_sp_collide,
-    Gate.mkAND op_is_mul_dp sr_3 mul_dp_collide,
-    Gate.mkAND op_is_add_sub sr_3 add_collide,
-    Gate.mkAND op_is_misc sr_1 misc_collide,
-
-    Gate.mkOR fma_sp_collide fma_dp_collide fma_collide,
-    Gate.mkOR mul_sp_collide mul_dp_collide mul_collide,
-    Gate.mkOR add_collide mul_collide will_collide_am,
-    Gate.mkOR fma_collide misc_collide will_collide_fma,
-    Gate.mkOR will_collide_am will_collide_fma will_collide
-  ]
-
-  let sr_next_1 := Wire.mk "sr_next_1_d"
-  let sr_next_2 := Wire.mk "sr_next_2_d"
-  let sr_next_3 := Wire.mk "sr_next_3_d"
-  let sr_next_4 := Wire.mk "sr_next_4_d"
-  let sr_next_5 := Wire.mk "sr_next_5_d"
-  let sr_next_6 := Wire.mk "sr_next_6_d"
-  let sr_next_7 := Wire.mk "sr_next_7_d"
-
-  let sr_update_gates := [
-    Gate.mkOR sr_2 mul_valid_sp sr_next_1,
-    Gate.mkOR (Wire.mk "v_add") mul_valid_dp (Wire.mk "add_or_muld"),
-    Gate.mkOR sr_3 (Wire.mk "add_or_muld") sr_next_2,
-    Gate.mkBUF sr_4 sr_next_3,
-    Gate.mkOR sr_5 fma_valid_sp sr_next_4,
-    Gate.mkBUF sr_6 sr_next_5,
-    Gate.mkOR sr_7 fma_valid_dp sr_next_6,
-    Gate.mkBUF zero sr_next_7
-  ]
-
-  let comp_sr_insts : List CircuitInstance := [
-    { moduleName := "DFlipFlop", instName := "u_comp_sr_d1",
-      portMap := [("d", sr_next_1), ("q", sr_1), ("clock", clock), ("reset", reset_misc_dp)] },
-    { moduleName := "DFlipFlop", instName := "u_comp_sr_d2",
-      portMap := [("d", sr_next_2), ("q", sr_2), ("clock", clock), ("reset", reset_misc_dp)] },
-    { moduleName := "DFlipFlop", instName := "u_comp_sr_d3",
-      portMap := [("d", sr_next_3), ("q", sr_3), ("clock", clock), ("reset", reset_misc_dp)] },
-    { moduleName := "DFlipFlop", instName := "u_comp_sr_d4",
-      portMap := [("d", sr_next_4), ("q", sr_4), ("clock", clock), ("reset", reset_misc_dp)] },
-    { moduleName := "DFlipFlop", instName := "u_comp_sr_d5",
-      portMap := [("d", sr_next_5), ("q", sr_5), ("clock", clock), ("reset", reset_misc_dp)] },
-    { moduleName := "DFlipFlop", instName := "u_comp_sr_d6",
-      portMap := [("d", sr_next_6), ("q", sr_6), ("clock", clock), ("reset", reset_misc_dp)] },
-    { moduleName := "DFlipFlop", instName := "u_comp_sr_d7",
-      portMap := [("d", sr_next_7), ("q", sr_7), ("clock", clock), ("reset", reset_misc_dp)] }
-  ]
-
+  -- No collision tracking here either; see the SP unit.
   let busy_gate := [
     Gate.mkOR div_sp_busy div_dp_busy (Wire.mk "busy_div_any"),
     Gate.mkOR sqrt_sp_busy sqrt_dp_busy (Wire.mk "busy_sqrt_any"),
     Gate.mkOR (Wire.mk "busy_div_any") (Wire.mk "busy_sqrt_any") (Wire.mk "busy_iter"),
-    Gate.mkOR (Wire.mk "busy_iter") hold_busy (Wire.mk "busy_core_h"),
-    Gate.mkOR (Wire.mk "busy_core_h") will_collide busy
+    Gate.mkOR (Wire.mk "busy_iter") hold_busy busy
   ]
 
   -- ══════════════════════════════════════════════
@@ -1812,12 +1672,7 @@ def mkFPExecUnitD : Circuit :=
   -- High when output comes from misc path and targets INT PRF
   -- (SP int-writing op detection lives above, next to the misc merge)
   -- ══════════════════════════════════════════════
-  let dp_misc_or_conv_rint := Wire.mk "dp_rint_comb"
-  let active_writes_int_pre := Wire.mk "active_writes_int_pre"
   let int_result_gates := [
-    Gate.mkMUX misc_dp_rint conv_dp_rint is_dp_conv dp_misc_or_conv_rint,
-    Gate.mkMUX sp_writes_int dp_misc_or_conv_rint is_dp active_writes_int_pre,
-    Gate.mkMUX active_writes_int_pre conv_long_rint is_long_conv (Wire.mk "active_writes_int"),
     -- Same rule as the SP builder: select on the held valids, and take the
     -- domain flag captured with the held result.
     Gate.mkOR hMul.v hAdd.v (Wire.mk "rint_d_t1"),
@@ -1834,11 +1689,12 @@ def mkFPExecUnitD : Circuit :=
     s1_hi_ones_gates ++ s2_hi_ones_gates ++ s3_hi_ones_gates ++
     s1_int_gates ++ [s1_byp_gate] ++ unbox_gates ++
     add_merge_gates ++ mul_merge_gates ++ fma_merge_gates ++ div_merge_gates ++ sqrt_merge_gates ++
-    is_dp_conv_gates ++ sp_int_detect_gates ++ misc_merge_gates ++ misc_pipe_dffs ++
+    is_dp_conv_gates ++ sp_int_detect_gates ++ misc_merge_gates ++
+    active_wint_pre_gates ++ misc_pipe_dffs ++ misc_out_mux_gates ++
     hold_gates ++ hold_busy_gates ++
     long_op_gates ++ long_conv_dec_gates ++ long_src1_gates ++
     mux1_gates ++ mux2_gates ++ mux3_gates ++ mux4_gates ++ mux5_gates ++
-    collision_check_gates ++ sr_update_gates ++ busy_gate ++ int_result_gates
+    busy_gate ++ int_result_gates
 
   { name := "FPExecUnit_D"
     inputs := src1 ++ src2 ++ src3 ++ op ++ rm ++ dest_tag ++
@@ -1848,7 +1704,7 @@ def mkFPExecUnitD : Circuit :=
     instances := [
       misc_sp_inst, adder_sp_inst, mul_sp_inst, fma_sp_inst, div_sp_inst, sqrt_sp_inst,
       misc_dp_inst, conv_dp_inst, conv_long_inst, adder_dp_inst, mul_dp_inst, fma_dp_inst, div_dp_inst, sqrt_dp_inst
-    ] ++ comp_sr_insts ++ hold_insts
+    ] ++ hold_insts
     signalGroups := [
       { name := "src1", width := 64, wires := src1 },
       { name := "src2", width := 64, wires := src2 },

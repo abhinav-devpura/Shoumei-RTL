@@ -223,6 +223,7 @@ yosys opt
 yosys select -assert-none t:\$dlatch
 yosys select -assert-none t:\$tribuf
 yosys check -assert
+yosys scc -expect 0
 
 # Step 5: Coarse synthesis
 if {$flatten} {
@@ -230,6 +231,7 @@ if {$flatten} {
 } else {
     synth -top $design_name -hieropt
 }
+yosys scc -expect 0
 
 # Step 6: Technology mapping of flip-flops
 dfflibmap -liberty $dff_lib
@@ -251,6 +253,7 @@ if {$dff_lib ne $target_lib} {
     lappend stat_cmd -liberty $dff_lib
 }
 tee -o "${out_dir}/reports/area.rpt" {*}$stat_cmd
+yosys scc -expect 0
 
 # Step 10: Export gate-level netlist
 set netlist_file "${out_dir}/netlist/${design_name}.v"
