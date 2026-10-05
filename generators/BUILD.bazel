@@ -59,7 +59,7 @@ lean_binary(
     srcs = ["GenTests.lean"],
     data = [":instr_dict"],
     main = "GenTests",
-    deps = ["//lean:shoumei"],
+    deps = ["//lean:testgen"],
 )
 
 lean_binary(
@@ -67,7 +67,7 @@ lean_binary(
     srcs = ["GenBenchmarks.lean"],
     data = [":instr_dict"],
     main = "GenBenchmarks",
-    deps = ["//lean:shoumei"],
+    deps = ["//lean:benchmark_specs"],
 )
 
 lean_binary(
@@ -84,10 +84,73 @@ lean_binary(
 )
 
 lean_binary(
+    name = "structural_lint",
+    srcs = ["StructuralLintMain.lean"],
+    main = "StructuralLintMain",
+    deps = ["//lean:structural_lint"],
+)
+
+lean_binary(
+    name = "lean_root",
+    srcs = ["LeanRootMain.lean"],
+    main = "LeanRootMain",
+    deps = ["//lean:lean_root"],
+)
+
+lean_binary(
+    name = "project_map",
+    srcs = ["ProjectMapMain.lean"],
+    main = "ProjectMapMain",
+    deps = ["//lean:project_map"],
+)
+
+lean_binary(
+    name = "gen_testbench",
+    srcs = ["GenTestbench.lean"],
+    main = "GenTestbench",
+    deps = ["//lean:circuits"],
+)
+
+lean_binary(
+    name = "generate_decoders",
+    srcs = ["GenerateDecoders.lean"],
+    data = [":instr_dict"],
+    main = "GenerateDecoders",
+    deps = ["//lean:decoder_gen"],
+)
+
+lean_binary(
+    name = "generate_leaves",
+    srcs = ["GenerateLeaves.lean"],
+    main = "GenerateLeaves",
+    deps = [
+        "//lean:leaf_circuits",
+        "//lean:sec_miter",
+    ],
+)
+
+lean_binary(
+    name = "generate_sec",
+    srcs = ["GenerateSec.lean"],
+    main = "GenerateSec",
+    deps = ["//lean:sec_miter"],
+)
+
+lean_binary(
+    name = "generate_visuals",
+    srcs = ["GenerateVisuals.lean"],
+    main = "GenerateVisuals",
+    deps = [
+        "//lean:circuits",
+        "//lean:visuals",
+    ],
+)
+
+lean_binary(
     name = "lean_lint",
     srcs = ["LeanLint.lean"],
     main = "LeanLint",
-    deps = ["//lean:shoumei"],
+    deps = ["//lean:lint"],
 )
 
 # The generator sources, for the tests that read the tree.

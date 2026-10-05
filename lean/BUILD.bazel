@@ -7,13 +7,112 @@ exports_files([
     "Shoumei/Verification/DualRTL.lean",
 ])
 
+DSL_SRCS = [
+    "Shoumei/DSL.lean",
+    "Shoumei/DSL/Interfaces.lean",
+    "Shoumei/DSL/PortResolve.lean",
+]
+
 lean_library(
     name = "dsl",
-    srcs = ["Shoumei/DSL.lean"],
+    srcs = DSL_SRCS,
     extra_flags = ["-DwarningAsError=true"],
 )
 
-CIRCUITS_EXCLUDE = [
+LINT_SRCS = [
+    "Shoumei/Lint/Fix.lean",
+    "Shoumei/Lint/Scan.lean",
+    "Shoumei/Lint/Style.lean",
+]
+
+RISCV_ISA_SRCS = [
+    "Shoumei/RISCV/Config.lean",
+    "Shoumei/RISCV/Decoder.lean",
+    "Shoumei/RISCV/Encoder.lean",
+    "Shoumei/RISCV/EncoderProofs.lean",
+    "Shoumei/RISCV/ISA.lean",
+    "Shoumei/RISCV/Microcode/FallbackTypes.lean",
+    "Shoumei/RISCV/Microcode/ZbEmulationLibrary.lean",
+    "Shoumei/RISCV/OpTypeGenerated.lean",
+    "Shoumei/RISCV/OpcodeParser.lean",
+]
+
+TESTGEN_SRCS = [
+    "Shoumei/TestGen/AsmEmitter.lean",
+    "Shoumei/TestGen/Patterns.lean",
+    "Shoumei/TestGen/RandAlphabet.lean",
+    "Shoumei/TestGen/RandProgram.lean",
+    "Shoumei/TestGen/Rng.lean",
+]
+
+BENCHMARK_SRCS = [
+    "Shoumei/RISCV/BenchmarkSpecs.lean",
+]
+
+STRUCTURAL_LINT_SRCS = [
+    "Shoumei/Verification/StructuralLint.lean",
+]
+
+LEAN_ROOT_SRCS = [
+    "Shoumei/Codegen/LeanRoot.lean",
+]
+
+PROJECT_MAP_SRCS = [
+    "Shoumei/Codegen/ProjectMap.lean",
+]
+
+lean_library(
+    name = "structural_lint",
+    srcs = STRUCTURAL_LINT_SRCS,
+    extra_flags = ["-DwarningAsError=true"],
+)
+
+lean_library(
+    name = "lean_root",
+    srcs = LEAN_ROOT_SRCS,
+    extra_flags = ["-DwarningAsError=true"],
+)
+
+lean_library(
+    name = "project_map",
+    srcs = PROJECT_MAP_SRCS,
+    extra_flags = ["-DwarningAsError=true"],
+)
+
+lean_library(
+    name = "lint",
+    srcs = LINT_SRCS,
+    extra_flags = ["-DwarningAsError=true"],
+)
+
+lean_library(
+    name = "riscv_isa",
+    srcs = RISCV_ISA_SRCS,
+    extra_flags = ["-DwarningAsError=true"],
+    deps = [":dsl"],
+)
+
+lean_library(
+    name = "testgen",
+    srcs = TESTGEN_SRCS,
+    extra_flags = ["-DwarningAsError=true"],
+    deps = [
+        ":dsl",
+        ":riscv_isa",
+    ],
+)
+
+lean_library(
+    name = "benchmark_specs",
+    srcs = BENCHMARK_SRCS,
+    extra_flags = ["-DwarningAsError=true"],
+    deps = [
+        ":dsl",
+        ":riscv_isa",
+    ],
+)
+
+PROOFS_PATTERNS = [
     "**/*Proofs.lean",
     "Shoumei/Circuits/Combinational/ALUBitVecBridge.lean",
     "Shoumei/Circuits/Sequential/Queue1Bridge.lean",
@@ -38,6 +137,116 @@ CIRCUITS_EXCLUDE = [
     "Shoumei/All.lean",
 ]
 
+PROOFS_SRCS = glob(
+    PROOFS_PATTERNS,
+    allow_empty = True,
+    exclude = ["Shoumei/RISCV/EncoderProofs.lean"],
+)
+
+DECODER_GEN_SRCS = [
+    "Shoumei/RISCV/CodegenCppSim.lean",
+    "Shoumei/RISCV/CodegenSystemVerilog.lean",
+    "Shoumei/RISCV/CodegenTest.lean",
+    "Shoumei/RISCV/InstructionList.lean",
+]
+
+SEC_MITER_SRCS = [
+    "Shoumei/Circuits/Sequential/DFF.lean",
+    "Shoumei/Circuits/Sequential/Register.lean",
+    "Shoumei/Codegen/Common.lean",
+    "Shoumei/Codegen/SECMiter.lean",
+    "Shoumei/Codegen/SVA.lean",
+    "Shoumei/Codegen/SystemVerilog.lean",
+]
+
+lean_library(
+    name = "decoder_gen",
+    srcs = DECODER_GEN_SRCS,
+    extra_flags = ["-DwarningAsError=true"],
+    deps = [
+        ":dsl",
+        ":riscv_isa",
+    ],
+)
+
+lean_library(
+    name = "sec_miter",
+    srcs = SEC_MITER_SRCS,
+    extra_flags = ["-DwarningAsError=true"],
+    deps = [":dsl"],
+)
+
+VISUALS_SRCS = [
+    "Shoumei/Codegen/ArchitectureDiagram.lean",
+    "Shoumei/Codegen/ArchitectureVisuals.lean",
+    "Shoumei/Codegen/BenchmarkVisual.lean",
+    "Shoumei/Codegen/SoCDiagram.lean",
+]
+
+lean_library(
+    name = "visuals",
+    srcs = VISUALS_SRCS,
+    extra_flags = ["-DwarningAsError=true"],
+    deps = [
+        ":circuits",
+        ":dsl",
+        ":riscv_isa",
+    ],
+)
+
+LEAF_CIRCUITS_SRCS = [
+    "Shoumei/Circuits/Combinational/ALU.lean",
+    "Shoumei/Circuits/Combinational/Arbiter.lean",
+    "Shoumei/Circuits/Combinational/BranchTargetAdder.lean",
+    "Shoumei/Circuits/Combinational/CarrySelectAdder.lean",
+    "Shoumei/Circuits/Combinational/Comparator.lean",
+    "Shoumei/Circuits/Combinational/Decoder.lean",
+    "Shoumei/Circuits/Combinational/KoggeStoneAdder.lean",
+    "Shoumei/Circuits/Combinational/LogicUnit.lean",
+    "Shoumei/Circuits/Combinational/MuxTree.lean",
+    "Shoumei/Circuits/Combinational/OneHotEncoder.lean",
+    "Shoumei/Circuits/Combinational/PCIncrementer.lean",
+    "Shoumei/Circuits/Combinational/Popcount.lean",
+    "Shoumei/Circuits/Combinational/PrefixAdder.lean",
+    "Shoumei/Circuits/Combinational/RippleCarryAdder.lean",
+    "Shoumei/Circuits/Combinational/Shifter.lean",
+    "Shoumei/Circuits/Combinational/Subtractor.lean",
+    "Shoumei/Circuits/Sequential/Queue.lean",
+    "Shoumei/Circuits/Sequential/QueueComponents.lean",
+    "Shoumei/Circuits/Sequential/QueueN.lean",
+    "Shoumei/Codegen/CellLibrary.lean",
+    "Shoumei/Codegen/CellLibs/ASAP7.lean",
+    "Shoumei/Codegen/CellLibs/GF180.lean",
+    "Shoumei/Codegen/CellLibs/Library.lean",
+    "Shoumei/Codegen/CellNetlist.lean",
+    "Shoumei/Codegen/CppSim.lean",
+    "Shoumei/Codegen/SystemVerilogNetlist.lean",
+    "Shoumei/Codegen/TechMap.lean",
+    "Shoumei/Codegen/Testbench.lean",
+    "Shoumei/Codegen/Unified.lean",
+    "Shoumei/Components/AdderLibrary.lean",
+    "Shoumei/Components/Cost.lean",
+    "Shoumei/Components/Select.lean",
+    "Shoumei/Components/Spec.lean",
+    "Shoumei/DSL/Decoupled.lean",
+    "Shoumei/Examples/Adder.lean",
+    "Shoumei/LeafRegistry.lean",
+    "Shoumei/Reflection/WireMap.lean",
+    "Shoumei/Semantics.lean",
+]
+
+lean_library(
+    name = "leaf_circuits",
+    srcs = LEAF_CIRCUITS_SRCS,
+    extra_flags = ["-DwarningAsError=true"],
+    deps = [
+        ":dsl",
+        ":sec_miter",
+    ],
+)
+
+CIRCUITS_EXCLUDE = DSL_SRCS + LINT_SRCS + RISCV_ISA_SRCS + TESTGEN_SRCS + BENCHMARK_SRCS + STRUCTURAL_LINT_SRCS + LEAN_ROOT_SRCS + PROJECT_MAP_SRCS + DECODER_GEN_SRCS + SEC_MITER_SRCS + VISUALS_SRCS + LEAF_CIRCUITS_SRCS + PROOFS_PATTERNS
+
 lean_library(
     name = "circuits",
     srcs = glob(
@@ -45,12 +254,34 @@ lean_library(
         exclude = CIRCUITS_EXCLUDE,
     ),
     extra_flags = ["-DwarningAsError=true"],
+    deps = [
+        ":decoder_gen",
+        ":dsl",
+        ":leaf_circuits",
+        ":riscv_isa",
+        ":sec_miter",
+    ],
 )
 
 lean_library(
     name = "shoumei",
-    srcs = glob(["**/*.lean"]),
+    srcs = PROOFS_SRCS,
     extra_flags = ["-DwarningAsError=true"],
+    deps = [
+        ":benchmark_specs",
+        ":circuits",
+        ":decoder_gen",
+        ":dsl",
+        ":leaf_circuits",
+        ":lean_root",
+        ":lint",
+        ":project_map",
+        ":riscv_isa",
+        ":sec_miter",
+        ":structural_lint",
+        ":testgen",
+        ":visuals",
+    ],
 )
 
 filegroup(
@@ -61,22 +292,22 @@ filegroup(
 sh_test(
     name = "lean_root_test",
     srcs = ["lean_root_test.sh"],
-    args = ["$(location //generators:generate_all)"],
+    args = ["$(location //generators:lean_root)"],
     data = [
         ":shoumei_srcs",
         "//:known_unbuilt_modules",
-        "//generators:generate_all",
+        "//generators:lean_root",
     ],
 )
 
 sh_test(
     name = "project_map_test",
     srcs = ["project_map_test.sh"],
-    args = ["$(location //generators:generate_all)"],
+    args = ["$(location //generators:project_map)"],
     data = [
         ":shoumei_srcs",
         "//:docs",
-        "//generators:generate_all",
+        "//generators:project_map",
     ],
 )
 

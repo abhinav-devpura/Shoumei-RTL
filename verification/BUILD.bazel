@@ -192,14 +192,14 @@ sh_test(
     args = [
         "$(rootpath //third_party/tools:yosys)",
         "$(location //:sv)",
-        "$(location //generators:generate_all)",
+        "$(location //generators:structural_lint)",
     ],
     data = [
         "dc-lint.sh",
         "tool_path.sh",
         "//:root_shell_scripts",
         "//:sv",
-        "//generators:generate_all",
+        "//generators:structural_lint",
         "//third_party/tools:yosys",
         "//third_party/tools:yosys_share",
     ],
@@ -361,7 +361,7 @@ sh_test(
         "$(location //:sv_gf180)",
         "$(location //:sv_sec)",
         "$(location //:cpp_sim)",
-        "$(location //generators:generate_all)",
+        "$(location //generators:generate_visuals)",
     ],
     data = [
         "tool_path.sh",
@@ -377,7 +377,7 @@ sh_test(
         "//:sv_asap7",
         "//:sv_gf180",
         "//:sv_sec",
-        "//generators:generate_all",
+        "//generators:generate_visuals",
         "//lean:shoumei_srcs",
         "//third_party:orfs_liberty",
         "//third_party/tools:verilator",
@@ -548,9 +548,9 @@ sh_test(
     name = "visuals_test",
     size = "medium",
     srcs = ["run_visuals.sh"],
-    args = ["$(location //generators:generate_all)"],
+    args = ["$(location //generators:generate_visuals)"],
     data = [
-        "//generators:generate_all",
+        "//generators:generate_visuals",
     ],
 )
 
