@@ -1659,7 +1659,7 @@ def mkFPExecUnitD : Circuit :=
     (List.range 5 |>.map fun i => Gate.mkMUX (t4_exc[i]!) (hSqrt.exc[i]!) hSqrt.v (exceptions[i]!)) ++
     [Gate.mkOR t4_valid hSqrt.v valid_out]
 
-  -- No collision tracking here either; see the SP unit.
+  -- No collision tracking here either. See the SP unit.
   let busy_gate := [
     Gate.mkOR div_sp_busy div_dp_busy (Wire.mk "busy_div_any"),
     Gate.mkOR sqrt_sp_busy sqrt_dp_busy (Wire.mk "busy_sqrt_any"),
@@ -1673,8 +1673,7 @@ def mkFPExecUnitD : Circuit :=
   -- (SP int-writing op detection lives above, next to the misc merge)
   -- ══════════════════════════════════════════════
   let int_result_gates := [
-    -- Same rule as the SP builder: select on the held valids, and take the
-    -- domain flag captured with the held result.
+    -- Select on the held valids. Take the domain flag captured with the held result.
     Gate.mkOR hMul.v hAdd.v (Wire.mk "rint_d_t1"),
     Gate.mkOR hFma.v hDiv.v (Wire.mk "rint_d_t2"),
     Gate.mkOR hSqrt.v (Wire.mk "rint_d_t1") (Wire.mk "rint_d_t3"),
